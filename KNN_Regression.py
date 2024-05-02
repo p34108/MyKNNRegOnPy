@@ -9,6 +9,7 @@ class MyKNNReg:
         self.size = None
         self.X, self.y = None, None
         self.metric = metric
+        self.weight = weight
 
     def __str__(self):
         return self.train_size
@@ -38,8 +39,33 @@ class MyKNNReg:
             evD = self.cosine_distance(self.X, X)
         evD.columns = ['bD']
         evD['y'] = self.y.reset_index(drop=True)
-        result = evD.sort_values(by='bD').reset_index(drop=True).iloc[:self.k]['y']
-        return result.mean()
+        if self.weight == 'uniform':
+            result = evD.sort_values(by='bD').reset_index(drop=True).iloc[:self.k]['y']
+            return result.mean()
+        elif self.weight == 'rank':
+            weights_array = []
+            test = evD.sort_values(by='bD').reset_index(drop=True).iloc[:self.k]
+            test = test.reset_index()
+            test['index'] = test['index'] + 1
+            for i in range(test.shape[0]):
+                numerator = np.vectorize(self.rank_or_distance_averaging)(test.iloc[i]['index'])
+                denominator = (np.vectorize(self.rank_or_distance_averaging)(test['index'])).sum()
+                Q_i = numerator / denominator
+                weights_array.append(Q_i)
+            return np.array(weights_array) @ test['y']
+        else:
+            weights_array = []
+            test = evD.sort_values(by='bD').reset_index(drop=True).iloc[:self.k]
+            for i in range(test.shape[0]):
+                numerator = np.vectorize(self.rank_or_distance_averaging)(test.iloc[i]['bD'])
+                denominator = (np.vectorize(self.rank_or_distance_averaging)(test['bD'])).sum()
+                Q_i = numerator / denominator
+                weights_array.append(Q_i)
+            return np.array(weights_array) @ test['y']
+
+    def rank_or_distance_averaging(self, stroka):
+        stroka = (1 / stroka)
+        return stroka
 
     def euclidean_distance(self, X_true, X):
         X_result = pd.DataFrame(np.sqrt(((X_true.reset_index(drop=True) - X) ** 2).sum(axis=1)))
